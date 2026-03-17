@@ -5,3 +5,4 @@ __pycache__/
 .claude/
 positions.json
 opportunities.json
+btc_ranges.json

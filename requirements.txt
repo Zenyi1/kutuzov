@@ -2,3 +2,5 @@ py-clob-client
 python-dotenv
 requests
 apscheduler
+yfinance
+scipy
