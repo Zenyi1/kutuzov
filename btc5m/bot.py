@@ -71,42 +71,38 @@ def run_window(skipping):
 
 
 def _entry_phase(mkt, window_ts, btc_open):
-    """try to enter a position in the first ENTRY_WINDOW seconds"""
+    """place limit buy on cheaper side at ENTRY_HIGH, let GTD handle fill"""
     cheap = market.get_cheap_side(mkt)
     if not cheap:
-        print(f"  no side in range [{ENTRY_LOW}-{ENTRY_HIGH}]")
+        print(f"  no market tokens available")
         return None
 
-    side, token_id, price = cheap
-    print(f"  target: {side} @ {price:.3f}")
+    side, token_id, current_price = cheap
+    buy_price = ENTRY_HIGH  #limit price we're willing to pay
+    size = round(BUDGET / buy_price, 1)
+    expiration = window_ts + ENTRY_WINDOW
+
+    print(f"  {side} currently @ {current_price:.3f}, placing limit buy @ {buy_price:.3f} for {size} shares (expires 2min)")
 
     #check order book depth
     client = market.get_client() if not DRY_RUN else None
 
     if client:
         depth = market.get_book_depth(client, token_id, ENTRY_HIGH)
-        if depth < MIN_BOOK_SIZE:
-            print(f"  book depth {depth:.1f} < {MIN_BOOK_SIZE}, skipping")
-            return None
-        print(f"  book depth: {depth:.1f} shares")
-
-    #compute size
-    size = round(BUDGET / price, 1)
-    expiration = window_ts + ENTRY_WINDOW
+        print(f"  book depth at {ENTRY_HIGH}: {depth:.1f} shares")
 
     #place GTD buy
     result = market.place_gtd_buy(
-        client, token_id, price, size, expiration,
+        client, token_id, buy_price, size, expiration,
     )
 
     if DRY_RUN:
-        #simulate fill for dry run
         return {
             "side": side,
             "token_id": token_id,
-            "entry_price": price,
+            "entry_price": buy_price,
             "size": size,
-            "cost": round(size * price, 2),
+            "cost": round(size * buy_price, 2),
             "tp_order_id": None,
             "client": None,
         }
@@ -131,9 +127,9 @@ def _entry_phase(mkt, window_ts, btc_open):
     return {
         "side": side,
         "token_id": token_id,
-        "entry_price": price,
+        "entry_price": buy_price,
         "size": filled_size,
-        "cost": round(filled_size * price, 2),
+        "cost": round(filled_size * buy_price, 2),
         "tp_order_id": tp_order_id,
         "client": client,
     }

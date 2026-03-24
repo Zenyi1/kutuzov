@@ -86,15 +86,14 @@ def fetch_5m_market(timestamp):
 
 
 def get_cheap_side(market):
-    """return (side_name, token_id, price) for whichever side is in entry range"""
-    for side, token_key, price_key in [
-        ("up", "up_token_id", "up_price"),
-        ("down", "down_token_id", "down_price"),
-    ]:
-        price = market[price_key]
-        token = market[token_key]
-        if token and ENTRY_LOW <= price <= ENTRY_HIGH:
-            return side, token, price
+    """return (side_name, token_id, current_price) for whichever side is cheaper"""
+    up = market["up_price"]
+    down = market["down_price"]
+
+    if down < up and market["down_token_id"]:
+        return "down", market["down_token_id"], down
+    elif market["up_token_id"]:
+        return "up", market["up_token_id"], up
     return None
 
 
