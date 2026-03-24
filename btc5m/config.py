@@ -19,9 +19,9 @@ ENTRY_HIGH = float(os.getenv("BTC5M_ENTRY_HIGH", "0.30"))
 TP_PRICE = float(os.getenv("BTC5M_TP_PRICE", "0.40"))
 
 #thresholds in basis points
-SWING_BPS = int(os.getenv("BTC5M_SWING_BPS", "10"))
-SKIP_BPS = int(os.getenv("BTC5M_SKIP_BPS", "11"))
-CALM_BPS = int(os.getenv("BTC5M_CALM_BPS", "5"))
+SWING_BPS = int(os.getenv("BTC5M_SWING_BPS", "30"))
+SKIP_BPS = int(os.getenv("BTC5M_SKIP_BPS", "50"))
+CALM_BPS = int(os.getenv("BTC5M_CALM_BPS", "20"))
 
 #arb
 ARB_THRESHOLD = float(os.getenv("BTC5M_ARB_THRESHOLD", "0.95"))
