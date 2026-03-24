@@ -1,8 +1,9 @@
 import sys
 import time
-from btc5m.config import SKIP_BPS, CALM_BPS
+from btc5m.config import SKIP_BPS, CALM_BPS, DRY_RUN
 from btc5m.price import start_price_feed, is_connected
 from btc5m.bot import run_window
+from btc5m import paper
 
 
 def main():
@@ -16,11 +17,16 @@ def main():
         print("could not connect to price feed")
         return
 
+    if DRY_RUN:
+        print("paper trading mode -- logging to paper_trades.txt")
+
     skipping = False
     once = "--once" in sys.argv
+    windows = 0
 
     while True:
         swing_bps = run_window(skipping)
+        windows += 1
 
         if swing_bps > SKIP_BPS:
             skipping = True
@@ -31,7 +37,12 @@ def main():
         elif skipping:
             print(f"still volatile ({swing_bps:.1f} bps) -- keep skipping")
 
+        #print summary every 12 windows (1 hour)
+        if windows % 12 == 0:
+            paper.summary()
+
         if once:
+            paper.summary()
             break
 
 

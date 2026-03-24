@@ -5,6 +5,7 @@ from btc5m.config import (
 )
 from btc5m.price import get_btc_price, price_change_bps, clear_history
 from btc5m import market
+from btc5m import paper
 
 
 def run_window(skipping):
@@ -39,13 +40,17 @@ def run_window(skipping):
         print(f"  ARB DETECTED: sum = {mkt['up_price'] + mkt['down_price']:.3f}")
         _execute_arb(mkt, window_ts)
         time.sleep(max(0, 300 - market.seconds_into_window()))
-        return _measure_swing(btc_open)
+        swing = _measure_swing(btc_open)
+        paper.log_arb(window_ts, mkt["up_price"], mkt["down_price"], BUDGET, btc_open, get_btc_price(), swing)
+        return swing
 
     #skip check
     if skipping:
         print("  skipping (volatile market)")
         time.sleep(max(0, 300 - market.seconds_into_window()))
-        return _measure_swing(btc_open)
+        swing = _measure_swing(btc_open)
+        paper.log_skip(window_ts, "volatile", btc_open, get_btc_price(), swing)
+        return swing
 
     #entry phase
     position = _entry_phase(mkt, window_ts, btc_open)
@@ -55,7 +60,9 @@ def run_window(skipping):
         remaining = 300 - market.seconds_into_window()
         if remaining > 0:
             time.sleep(remaining)
-        return _measure_swing(btc_open)
+        swing = _measure_swing(btc_open)
+        paper.log_skip(window_ts, "no entry", btc_open, get_btc_price(), swing)
+        return swing
 
     #monitor + exit phases
     _monitor_and_exit(position, btc_open)
@@ -157,6 +164,7 @@ def _monitor_and_exit(position, btc_open):
     side = position["side"]
     token_id = position["token_id"]
     tp_order_id = position["tp_order_id"]
+    window_ts = market.current_window_ts()
 
     while True:
         elapsed = market.seconds_into_window()
@@ -165,13 +173,16 @@ def _monitor_and_exit(position, btc_open):
         if remaining <= 0:
             break
 
-        #check if take-profit filled
+        #check if take-profit filled (live only)
         if client and tp_order_id:
             try:
                 order = client.get_order(tp_order_id)
                 if order.get("status") == "MATCHED":
                     profit = round(position["size"] * TP_PRICE - position["cost"], 2)
                     print(f"  TAKE PROFIT: +${profit}")
+                    btc_close = get_btc_price()
+                    swing = price_change_bps(btc_open, btc_close)
+                    paper.log_trade(window_ts, side, position["entry_price"], position["size"], position["cost"], "TP WIN", profit, btc_open, btc_close, swing)
                     return
             except Exception:
                 pass
@@ -187,20 +198,17 @@ def _monitor_and_exit(position, btc_open):
 
             if against and move_bps > SWING_BPS:
                 print(f"  STOP LOSS: btc moved {move_bps:.1f} bps against {side}")
+                #in paper mode, assume we salvage ~5% of position
+                salvage = round(position["size"] * 0.05, 2)
+                loss = round(salvage - position["cost"], 2)
                 if client:
                     if tp_order_id:
                         market.cancel_order(client, tp_order_id)
                     market.place_market_sell(client, token_id, position["size"], 0.01)
-                else:
-                    print(f"  [dry run] would cancel TP and FOK sell at 0.01")
+                btc_close = get_btc_price()
+                swing = price_change_bps(btc_open, btc_close)
+                paper.log_trade(window_ts, side, position["entry_price"], position["size"], position["cost"], "STOP LOSS", loss, btc_open, btc_close, swing)
                 return
-
-        if DRY_RUN and remaining < 295:
-            #don't sit in dry run for 5 min
-            btc_now = get_btc_price()
-            move = price_change_bps(btc_open, btc_now)
-            print(f"  [dry run] {remaining:.0f}s left, btc move: {move:.1f} bps")
-            break
 
         time.sleep(5)
 
@@ -208,13 +216,17 @@ def _monitor_and_exit(position, btc_open):
     btc_close = get_btc_price()
     btc_went_up = btc_close > btc_open
     won = (side == "up" and btc_went_up) or (side == "down" and not btc_went_up)
+    swing = price_change_bps(btc_open, btc_close)
 
     if won:
         payout = position["size"]
         profit = round(payout - position["cost"], 2)
         print(f"  SETTLED WIN: payout ${payout:.2f}, profit +${profit}")
+        paper.log_trade(window_ts, side, position["entry_price"], position["size"], position["cost"], "WIN", profit, btc_open, btc_close, swing)
     else:
+        loss = -position["cost"]
         print(f"  SETTLED LOSS: -${position['cost']}")
+        paper.log_trade(window_ts, side, position["entry_price"], position["size"], position["cost"], "LOSS", loss, btc_open, btc_close, swing)
 
 
 def _execute_arb(mkt, window_ts):
